@@ -43,7 +43,7 @@ def main():
     print(f"📂 現在の作業ディレクトリ: {CDIR}")
 
     print("=== [1/2] AppendCSV_New ===")
-    run(["python3", "run_all_append_csv_new.py"])
+    run(["python3", "run_all_append_csv_new_save.py"])
 
     print("=== [2/2] Notion Upsert ===")
     run(["python3", "notion_upsert_from_csv.py"])
