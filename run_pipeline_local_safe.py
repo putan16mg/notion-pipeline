@@ -38,7 +38,8 @@ def main():
 
     os.chdir(CDIR)
     print("=== [1/2] AppendCSV_New ===")
-    run(["python3", "run_all_append_csv_new.py"])
+    # ★ここだけ変更：実行ファイル名を新名に
+    run(["python3", "run_all_append_csv_new_save.py"])
 
     print("=== [2/2] Notion Upsert ===")
     run(["python3", "notion_upsert_from_csv.py"])
