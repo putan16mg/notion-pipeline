@@ -1,43 +1,57 @@
-name: Notion Pipeline
+name: 🧩 Notion Pipeline (Local Safe)
 
 on:
-  workflow_dispatch:  # 手動実行のみ（Actionsタブから実行）
+  workflow_dispatch:
 
 jobs:
-  run-pipeline:
+  run:
     runs-on: ubuntu-latest
 
-    env:
-      NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
-      NOTION_DB_ID: ${{ secrets.NOTION_DB_ID }}
-      SERVICE_ACCOUNT_FILE: ${{ github.workspace }}/sa.json
-      CSV_PATH: ${{ github.workspace }}/data/ChatGPT_Merge_master.csv
-      LOG_DIR: ${{ github.workspace }}/logs
-
     steps:
-      - name: 📦 リポジトリをチェックアウト
+      - name: 📥 リポジトリをチェックアウト
         uses: actions/checkout@v4
 
-      - name: 🐍 Pythonセットアップ
+      - name: 🐍 Pythonをセットアップ
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
-      - name: 🔧 依存パッケージをインストール
+      - name: 📦 依存パッケージをインストール
         run: |
-          pip install --upgrade pip
-          pip install google-api-python-client google-auth-httplib2 google-auth-oauthlib requests
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
-      - name: 🗂️ データとログフォルダを作成
+      - name: 🔑 GoogleサービスアカウントJSONを展開（Base64方式）
         run: |
-          mkdir -p data logs
-          echo "フォルダ準備OK"
+          # SecretsのBase64文字列をデコードしてsa.jsonを生成
+          printf '%s' '${{ secrets.GDRIVE_SA_JSON_BASE64 }}' | base64 -d > sa.json
 
-      - name: 🔑 GoogleサービスアカウントJSONを展開
-        run: |
-          echo '${{ secrets.GDRIVE_SERVICE_JSON }}' > sa.json
-          echo "✅ サービスアカウントJSON 展開完了"
+          # JSONが壊れていないか検証
+          python - <<'PY'
+          import json,sys
+          try:
+              with open('sa.json','r',encoding='utf-8') as f:
+                  json.load(f)
+              print('✅ sa.json OK')
+          except Exception as e:
+              print('❌ sa.json invalid:', e)
+              sys.exit(1)
+          PY
 
-      - name: ▶️ 実行 - Notion Pipeline
+          # 他のスクリプトが参照できるよう環境変数に設定
+          echo "SERVICE_ACCOUNT_FILE=$PWD/sa.json" >> $GITHUB_ENV
+
+      - name: 🔧 環境変数を設定
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_DB_ID: ${{ secrets.NOTION_DB_ID }}
+          CSV_PATH: ${{ secrets.CSV_PATH }}
+          GDRIVE_SA_JSON_BASE64: ${{ secrets.GDRIVE_SA_JSON_BASE64 }}
+          DRY_RUN: "1"
         run: |
+          echo "✅ 環境変数を設定しました"
+
+      - name: 🚀 パイプラインを実行
+        run: |
+          echo "📂 現在の作業ディレクトリ: $(pwd)"
           python3 run_pipeline_local_safe.py
