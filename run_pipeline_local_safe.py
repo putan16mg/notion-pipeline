@@ -21,6 +21,9 @@ else:
     CDIR = CDIR_LOCAL
     CSV_PATH = os.environ.get("CSV_PATH", CSV_PATH_LOCAL)
 
+# ★追加：LOG_DIR（環境変数または既定logsフォルダ）
+LOG_DIR = os.environ.get("LOG_DIR", os.path.join(CDIR, "logs"))
+
 # DRY_RUNフラグ：環境変数または手動で制御（既定 False）
 DRY_RUN = os.environ.get("DRY_RUN", "False").lower() in ("1", "true", "yes")
 
@@ -40,6 +43,7 @@ def main():
     os.environ["NOTION_TOKEN"] = NOTION_TOKEN
     os.environ["NOTION_DB_ID"] = NOTION_DB_ID
     os.environ["CSV_PATH"] = CSV_PATH
+    os.environ["LOG_DIR"]  = LOG_DIR          # ★追加
     if DRY_RUN:
         os.environ["DRY_RUN"] = "1"
     else:
@@ -49,12 +53,17 @@ def main():
     os.chdir(CDIR)
     print(f"📂 現在の作業ディレクトリ: {CDIR}")
     print(f"🗂 参照CSV: {os.environ.get('CSV_PATH')}")
+    print(f"🗒 ログ出力先: {LOG_DIR}")
 
-    # === [1/2] CSV追記（名前だけ _save に変更） ===
+    # ★追加：必要ディレクトリを先に作成（CI用）
+    os.makedirs(os.path.dirname(CSV_PATH), exist_ok=True)
+    os.makedirs(LOG_DIR, exist_ok=True)
+
+    # === [1/2] CSV追記（_save版） ===
     print("=== [1/2] AppendCSV_New ===")
     run(["python3", "run_all_append_csv_new_save.py"])
 
-    # === [2/2] Notion反映（名前だけ _save に変更） ===
+    # === [2/2] Notion反映（_save版） ===
     print("=== [2/2] Notion Upsert ===")
     run(["python3", "notion_upsert_from_csv_save.py"])
 
