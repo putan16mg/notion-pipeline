@@ -22,6 +22,7 @@ jobs:
           pip install google-api-python-client google-auth google-auth-httplib2 google-auth-oauthlib requests pandas
 
       - name: Make service account file
+        shell: bash
         run: |
           SA_B64="${{ secrets.GDRIVE_SA_JSON_BASE64 }}"
           if [ -z "$SA_B64" ]; then
@@ -32,20 +33,10 @@ jobs:
           else
             printf '%s' '${{ secrets.GDRIVE_SA_JSON }}' > sa.json
           fi
-
-          python - <<'PY'
-import json, sys
-try:
-    with open('sa.json','r',encoding='utf-8') as f:
-        data=f.read()
-    if not data.strip():
-        print('sa.json is empty'); sys.exit(1)
-    json.loads(data)
-    print('sa.json OK')
-except Exception as e:
-    print('sa.json invalid:', e); sys.exit(1)
-PY
-
+          # verify non-empty
+          if [ ! -s sa.json ]; then
+            echo "sa.json is empty"; exit 1
+          fi
           echo "SERVICE_ACCOUNT_FILE=$PWD/sa.json" >> $GITHUB_ENV
 
       - name: Prepare dirs
