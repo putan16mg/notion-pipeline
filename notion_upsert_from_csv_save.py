@@ -1,18 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-CSV -> Notion 追加/補完スクリプト
+CSV -> Notion 追加/補完スクリプト (_save版)
 - 既存ページは「問題」「解答解説」のいずれかが空なら、その空欄だけ埋める（既存値は触らない）
 - 両方とも埋まっている完全一致ペアはスキップ
 - どちらにも該当しなければ新規作成
 - 重複キーは Google Drive の fileId を使用（id=... / /d/... の両対応）
-
-必要な環境変数:
-  NOTION_TOKEN   … Integration token（"secret_" または "ntn_" で始まる）
-  NOTION_DB_ID   … 対象DBのID
-任意:
-  CSV_PATH       … CSVパス（既定: ~/Documents/Notion_Auto/automation/data/ChatGPT_Merge_master.csv）
-  DRY_RUN=1      … 実作成/更新せず件数のみ確認
 """
 
 import os, csv, re, time, json, unicodedata, sys
@@ -45,7 +38,7 @@ def drive_key(url: str) -> str:
     if m: return m.group(1)
     m = re_id_path.search(u)
     if m: return m.group(1)
-    return u  # それ以外はそのまま（比較用）
+    return u
 
 def pair_key(p_url: str, a_url: str) -> Tuple[str, str]:
     return (drive_key(p_url), drive_key(a_url))
@@ -65,12 +58,6 @@ def ensure_env():
         print("✖ NOTION_DB_ID 未設定", file=sys.stderr); sys.exit(2)
 
 def fetch_existing_maps(db_id: str):
-    """
-    DBの全ページを走査し、以下を返す：
-      pairs: (p_key, a_key) -> page_id
-      by_p : p_key -> (page_id, p_url, a_url)
-      by_a : a_key -> (page_id, p_url, a_url)
-    """
     pairs: Dict[Tuple[str,str], str] = {}
     by_p : Dict[str, Tuple[str,str,str]] = {}
     by_a : Dict[str, Tuple[str,str,str]] = {}
@@ -126,10 +113,6 @@ def create_page(db_id: str, row: Dict[str, str]) -> Optional[str]:
 
 def patch_missing(page_id: str, want_p_url: str, want_a_url: str,
                   cur_p_url: str, cur_a_url: str) -> bool:
-    """
-    既存ページの空欄だけを埋める。既存に値がある列は触らない。
-    何も更新しない場合は False、更新したら True。
-    """
     props = {}
     if (not cur_p_url) and want_p_url:
         props["問題"] = {"url": want_p_url}
@@ -137,7 +120,7 @@ def patch_missing(page_id: str, want_p_url: str, want_a_url: str,
         props["解答解説"] = {"url": want_a_url}
 
     if not props:
-        return False  # 更新不要
+        return False
 
     payload = {"properties": props}
     if DRY_RUN:
@@ -173,17 +156,14 @@ def main():
         a_url = nfc(r.get("解答解説",""))
         pk, ak = pair_key(p_url, a_url)
 
-        # 1) 完全一致はスキップ
         if any((pk, ak)) and (pk, ak) in pairs:
             skipped += 1
             continue
 
-        # 2) 片方一致 → 既存ページの空欄だけ埋める
         if pk and pk in by_p:
             page_id, cur_p, cur_a = by_p[pk]
             if patch_missing(page_id, p_url, a_url, cur_p, cur_a):
                 patched += 1
-                # ローカルキャッシュも更新
                 new_p = cur_p or p_url
                 new_a = cur_a or a_url
                 pairs[(drive_key(new_p), drive_key(new_a))] = page_id
@@ -206,11 +186,9 @@ def main():
             time.sleep(0.1)
             continue
 
-        # 3) どこにも一致しなければ新規作成
         pid = create_page(NOTION_DB_ID, r)
         if pid:
             created += 1
-            # 追加直後のキー登録（URLがあれば）
             npk, nak = pair_key(p_url, a_url)
             pairs[(npk, nak)] = pid
             if npk: by_p[npk] = (pid, p_url, a_url)
