@@ -1,36 +1,37 @@
-name: Notion Pipeline
+- name: 🔑 GoogleサービスアカウントJSONを展開（どちらのSecret名でも可）
+  run: |
+    # 1) まずは Base64 版の Secret を探す（優先：GDRIVE_SA_JSON_BASE64 → 次点：SA_BASE64）
+    SA_B64="${{ secrets.GDRIVE_SA_JSON_BASE64 }}"
+    if [ -z "$SA_B64" ]; then
+      SA_B64="${{ secrets.SA_BASE64 }}"
+    fi
 
-on:
-  workflow_dispatch:
-  push:
-    branches: [ "main" ]
+    if [ -n "$SA_B64" ]; then
+      # Base64 → sa.json に復元（改行崩れ無し）
+      printf '%s' "$SA_B64" | base64 -d > sa.json
+    else
+      # 2) Base64が無ければ、プレーンJSON版 Secret（GDRIVE_SA_JSON）をそのまま書き出し
+      printf '%s' '${{ secrets.GDRIVE_SA_JSON }}' > sa.json
+    fi
 
-jobs:
-  run-pipeline:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+    # 検証（0バイト/壊れJSONならここで止める）
+    python - <<'PY'
+    import json,sys
+    try:
+        with open('sa.json','r',encoding='utf-8') as f:
+            data=f.read()
+        if not data.strip():
+            print('❌ sa.json is empty'); sys.exit(1)
+        json.loads(data)
+        print('✅ sa.json OK')
+    except Exception as e:
+        print('❌ sa.json invalid:', e); sys.exit(1)
+    PY
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
+    # スクリプトが参照するパスを通知（既に使っている変数）
+    echo "SERVICE_ACCOUNT_FILE=$PWD/sa.json" >> $GITHUB_ENV
 
-      - name: Install dependencies
-        run: |
-          python3 -m pip install --upgrade pip
-          pip install google-api-python-client google-auth google-auth-oauthlib google-auth-httplib2 requests
-
-      - name: Decode Service Account
-        run: |
-          echo "${{ secrets.GDRIVE_SERVICE_KEY }}" | base64 --decode > sa.json
-
-      - name: Run pipeline
-        env:
-          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
-          NOTION_DB_ID: ${{ secrets.NOTION_DB_ID }}
-          CSV_PATH: data/ChatGPT_Merge_master.csv
-          SERVICE_ACCOUNT_FILE: sa.json
-        run: |
-          python3 run_pipeline_local_safe.py
+- name: 🧪 Debug: sa.json の中身チェック（サイズと先頭数行）
+  run: |
+    ls -l sa.json || true
+    head -n 3 sa.json || true
