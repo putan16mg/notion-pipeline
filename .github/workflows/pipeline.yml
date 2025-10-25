@@ -1,57 +1,36 @@
-name: 🧩 Notion Pipeline (Local Safe)
+name: Notion Pipeline
 
 on:
   workflow_dispatch:
+  push:
+    branches: [ "main" ]
 
 jobs:
-  run:
+  run-pipeline:
     runs-on: ubuntu-latest
-
     steps:
-      - name: 📥 リポジトリをチェックアウト
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: 🐍 Pythonをセットアップ
-        uses: actions/setup-python@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
-      - name: 📦 依存パッケージをインストール
+      - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          python3 -m pip install --upgrade pip
+          pip install google-api-python-client google-auth google-auth-oauthlib google-auth-httplib2 requests
 
-      - name: 🔑 GoogleサービスアカウントJSONを展開（Base64方式）
+      - name: Decode Service Account
         run: |
-          # SecretsのBase64文字列をデコードしてsa.jsonを生成
-          printf '%s' '${{ secrets.GDRIVE_SA_JSON_BASE64 }}' | base64 -d > sa.json
+          echo "${{ secrets.GDRIVE_SERVICE_KEY }}" | base64 --decode > sa.json
 
-          # JSONが壊れていないか検証
-          python - <<'PY'
-          import json,sys
-          try:
-              with open('sa.json','r',encoding='utf-8') as f:
-                  json.load(f)
-              print('✅ sa.json OK')
-          except Exception as e:
-              print('❌ sa.json invalid:', e)
-              sys.exit(1)
-          PY
-
-          # 他のスクリプトが参照できるよう環境変数に設定
-          echo "SERVICE_ACCOUNT_FILE=$PWD/sa.json" >> $GITHUB_ENV
-
-      - name: 🔧 環境変数を設定
+      - name: Run pipeline
         env:
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
           NOTION_DB_ID: ${{ secrets.NOTION_DB_ID }}
-          CSV_PATH: ${{ secrets.CSV_PATH }}
-          GDRIVE_SA_JSON_BASE64: ${{ secrets.GDRIVE_SA_JSON_BASE64 }}
-          DRY_RUN: "1"
+          CSV_PATH: data/ChatGPT_Merge_master.csv
+          SERVICE_ACCOUNT_FILE: sa.json
         run: |
-          echo "✅ 環境変数を設定しました"
-
-      - name: 🚀 パイプラインを実行
-        run: |
-          echo "📂 現在の作業ディレクトリ: $(pwd)"
           python3 run_pipeline_local_safe.py
