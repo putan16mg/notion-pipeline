@@ -29,7 +29,8 @@ jobs:
         env:
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
           NOTION_DB_ID: ${{ secrets.NOTION_DB_ID }}
-          CSV_PATH: ${{ github.workspace }}/ChatGPT_Merge_master.csv   # ← 修正：リポ直下
-          ROOT_DIR: ${{ github.workspace }}/data/input                 # ← TXT置き場（環境変数で渡す）
+          CSV_PATH: ${{ github.workspace }}/ChatGPT_Merge_master.csv   # CSVはリポ直下
+          ROOT_DIR: ${{ github.workspace }}/data/input                 # TXT置き場
+          LOG_DIR:  ${{ github.workspace }}/logs                      # ★ 追加：/Users を避ける
         run: |
           python3 run_pipeline_local_safe.py
