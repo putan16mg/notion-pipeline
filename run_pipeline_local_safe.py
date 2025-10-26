@@ -6,9 +6,8 @@ import os, subprocess, sys
 NOTION_TOKEN = os.environ.get("NOTION_TOKEN")
 NOTION_DB_ID = os.environ.get("NOTION_DB_ID")
 
-# ▼▼▼ 修正：CSVはリポ直下を既定に統一 ▼▼▼
+# ★ 修正：CSVはリポ直下を既定に統一
 CSV_PATH = os.environ.get("CSV_PATH", "ChatGPT_Merge_master.csv")
-# ▲▲▲ 変更はこの1行のみ ▲▲▲
 
 CDIR = os.getcwd()
 
