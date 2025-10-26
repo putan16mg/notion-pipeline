@@ -6,9 +6,9 @@ import os, subprocess, sys
 NOTION_TOKEN = os.environ.get("NOTION_TOKEN")
 NOTION_DB_ID = os.environ.get("NOTION_DB_ID")
 
-# ▼▼▼ ここだけ修正（CSVはリポ直下の既定に統一） ▼▼▼
+# ▼▼▼ 修正：CSVはリポ直下を既定に統一 ▼▼▼
 CSV_PATH = os.environ.get("CSV_PATH", "ChatGPT_Merge_master.csv")
-# ▲▲▲ 修正はこの1行のみ ▲▲▲
+# ▲▲▲ 変更はこの1行のみ ▲▲▲
 
 CDIR = os.getcwd()
 
@@ -27,9 +27,9 @@ def main():
         print("GitHub Secrets または環境変数を確認してください。")
         sys.exit(1)
 
-    # 参照パス表示（既存の出力フォーマットそのまま）
+    # 参照パス表示（既存の出力フォーマット準拠）
     print(f"📂 現在の作業ディレクトリ: {CDIR}")
-    print(f"🗂 参照CSV: {CSV_PATH}")
+    print(f"🗂 参照CSV: {os.path.join(CDIR, CSV_PATH) if not os.path.isabs(CSV_PATH) else CSV_PATH}")
     print(f"🗒 ログ出力先: {os.path.join(CDIR, 'logs')}")
 
     # 環境変数を一時的に渡す
@@ -41,7 +41,7 @@ def main():
     else:
         os.environ.pop("DRY_RUN", None)
 
-    # スクリプト実行
+    # 実行
     print("=== [1/2] AppendCSV_New ===")
     run(["python3", "run_all_append_csv_new_save.py"])
 
