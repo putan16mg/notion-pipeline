@@ -25,11 +25,25 @@ jobs:
         run: |
           mkdir -p data/input logs
 
-      # ▼▼▼ 追加①：SA JSONをファイル化 ▼▼▼
+      # ★ 修正：SecretsのJSONを壊さずsa.jsonに復元（ヒアドキュメント）
       - name: Materialize Service Account JSON
         run: |
-          echo '${{ secrets.GDRIVE_SA_JSON }}' > sa.json
-      # ▲▲▲ ここまで追加 ▲▲▲
+          cat > sa.json <<'JSON'
+          ${{ secrets.GDRIVE_SA_JSON }}
+          JSON
+          # 簡易チェック（中身は出さない）
+          python - <<'PY'
+          import json,sys
+          b=open('sa.json','rb').read()
+          print('sa.json bytes:', len(b))
+          try:
+              info=json.loads(b.decode('utf-8'))
+          except Exception as e:
+              print('JSON error:', e); sys.exit(1)
+          need=('type','project_id','client_email','private_key')
+          miss=[k for k in need if k not in info]
+          print('keys ok' if not miss else f'missing keys: {miss}')
+          PY
 
       - name: Run pipeline
         env:
@@ -38,6 +52,6 @@ jobs:
           CSV_PATH: ${{ github.workspace }}/ChatGPT_Merge_master.csv   # CSVはリポ直下
           ROOT_DIR: ${{ github.workspace }}/data/input                 # TXT置き場
           LOG_DIR:  ${{ github.workspace }}/logs                      # /Users を避ける
-          SERVICE_ACCOUNT_FILE: ${{ github.workspace }}/sa.json       # ▼▼▼ 追加②
+          SERVICE_ACCOUNT_FILE: ${{ github.workspace }}/sa.json       # ここを読ませる
         run: |
           python3 run_pipeline_local_safe.py
