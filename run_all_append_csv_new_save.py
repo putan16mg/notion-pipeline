@@ -15,12 +15,11 @@ from collections import defaultdict
 from typing import Dict, Tuple, Optional, List, Set
 
 # ====== 固定パス（あなたの環境に合わせて既に使用している値） ======
-# ▼▼▼ 修正：環境変数 ROOT_DIR を優先（既定は従来ローカルパス） ▼▼▼
+# ★ 修正：環境変数 ROOT_DIR を優先（既定は従来ローカルパス）
 ROOT_DIR = os.environ.get(
     "ROOT_DIR",
     "/Users/odaakihisa/Library/CloudStorage/GoogleDrive-radioheadsyrup16g@gmail.com/マイドライブ/診断士試験/一次試験/問題・演習/chat gpt作成問題"
 )
-# ▲▲▲ 変更はこの1行のみ ▲▲▲
 
 LOG_DIR  = os.environ.get("LOG_DIR", "/Users/odaakihisa/Library/CloudStorage/GoogleDrive-radioheadsyrup16g@gmail.com/マイドライブ/診断士試験/一次試験/_logs")
 CSV_OUT  = os.environ.get("CSV_PATH", "/Users/odaakihisa/Documents/Notion_Auto/automation/data/ChatGPT_Merge_master.csv")
@@ -235,9 +234,8 @@ def process_and_output_csv(items, csv_out, log_dir):
     if new_rows:
         write_header = not os.path.exists(csv_out) or os.path.getsize(csv_out) == 0
 
-        # ===★ ここだけ追加★===
+        # 改行保証（上書きはしない）
         ensure_trailing_newline(csv_out)
-        # ===★ ここまで追加★===
 
         # 追記モード（上書き禁止）
         with open(csv_out, "a", encoding="utf-8-sig", newline="") as f:
