@@ -21,32 +21,15 @@ jobs:
           python -m pip install --upgrade pip
           pip install google-api-python-client google-auth google-auth-httplib2 google-auth-oauthlib requests pandas
 
-      - name: Make service account file
-        shell: bash
-        run: |
-          SA_B64="${{ secrets.GDRIVE_SA_JSON_BASE64 }}"
-          if [ -z "$SA_B64" ]; then
-            SA_B64="${{ secrets.SA_BASE64 }}"
-          fi
-          if [ -n "$SA_B64" ]; then
-            printf '%s' "$SA_B64" | base64 -d > sa.json
-          else
-            printf '%s' '${{ secrets.GDRIVE_SA_JSON }}' > sa.json
-          fi
-          # verify non-empty
-          if [ ! -s sa.json ]; then
-            echo "sa.json is empty"; exit 1
-          fi
-          echo "SERVICE_ACCOUNT_FILE=$PWD/sa.json" >> $GITHUB_ENV
-
       - name: Prepare dirs
         run: |
-          mkdir -p data logs
+          mkdir -p data/input logs
 
       - name: Run pipeline
         env:
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
           NOTION_DB_ID: ${{ secrets.NOTION_DB_ID }}
-          CSV_PATH: data/ChatGPT_Merge_master.csv
+          CSV_PATH: ${{ github.workspace }}/ChatGPT_Merge_master.csv   # ← 修正：リポ直下
+          ROOT_DIR: ${{ github.workspace }}/data/input                 # ← TXT置き場（環境変数で渡す）
         run: |
           python3 run_pipeline_local_safe.py
