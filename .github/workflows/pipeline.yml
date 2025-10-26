@@ -38,52 +38,18 @@ jobs:
           mkdir -p data/input logs
 
       # ------------------------------
-      # ⑤ Secret チェック（Base64有効確認）
-      # ------------------------------
-      - name: Preflight: check secret present
-        run: |
-          if [ -z "${{ secrets.GDRIVE_SA_JSON_B64 }}" ]; then
-            echo "❌ GDRIVE_SA_JSON_B64 is EMPTY or not visible to this run."
-            echo "Repo Settings → Secrets and variables → Actions → Repository secrets に作成して下さい。"
-            exit 1
-          fi
-
-      # ------------------------------
-      # ⑥ Secret の長さを確認（安全にマスク）
-      # ------------------------------
-      - name: Preflight: print secret length (masked)
-        env:
-          GDRIVE_SA_JSON_B64: ${{ secrets.GDRIVE_SA_JSON_B64 }}
-        run: |
-          python - <<'PY'
-          import os
-          s = os.environ.get('GDRIVE_SA_JSON_B64','')
-          print('secret_present:', bool(s))
-          print('secret_length:', len(s))
-          PY
-
-      # ------------------------------
-      # ⑦ Base64 デコードして sa.json を復元
+      # ⑤ Base64で保存されたサービスアカウントを復元
       # ------------------------------
       - name: Materialize Service Account JSON (Base64)
         env:
-          GDRIVE_SA_JSON_B64: ${{ secrets.GDRIVE_SA_JSON_B64 }}
+          GDRIVE_SA_JSON_BASE64: ${{ secrets.GDRIVE_SA_JSON_BASE64 }}
         run: |
-          echo "$GDRIVE_SA_JSON_B64" | base64 --decode > sa.json
-          python - <<'PY'
-          import json
-          b = open('sa.json','rb').read()
-          print('sa.json bytes:', len(b))
-          try:
-              json.loads(b.decode('utf-8'))
-          except Exception as e:
-              print('JSON error:', e)
-              raise
-          print('✅ sa.json decoded & parsed ok')
-          PY
+          echo "$GDRIVE_SA_JSON_BASE64" | base64 --decode > sa.json
+          echo "✅ sa.json created"
+          ls -l sa.json
 
       # ------------------------------
-      # ⑧ パイプラインを実行
+      # ⑥ パイプライン実行
       # ------------------------------
       - name: Run pipeline
         env:
