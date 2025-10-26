@@ -25,12 +25,19 @@ jobs:
         run: |
           mkdir -p data/input logs
 
+      # ▼▼▼ 追加①：SA JSONをファイル化 ▼▼▼
+      - name: Materialize Service Account JSON
+        run: |
+          echo '${{ secrets.GDRIVE_SA_JSON }}' > sa.json
+      # ▲▲▲ ここまで追加 ▲▲▲
+
       - name: Run pipeline
         env:
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
           NOTION_DB_ID: ${{ secrets.NOTION_DB_ID }}
           CSV_PATH: ${{ github.workspace }}/ChatGPT_Merge_master.csv   # CSVはリポ直下
           ROOT_DIR: ${{ github.workspace }}/data/input                 # TXT置き場
-          LOG_DIR:  ${{ github.workspace }}/logs                      # ★ 追加：/Users を避ける
+          LOG_DIR:  ${{ github.workspace }}/logs                      # /Users を避ける
+          SERVICE_ACCOUNT_FILE: ${{ github.workspace }}/sa.json       # ▼▼▼ 追加②
         run: |
           python3 run_pipeline_local_safe.py
