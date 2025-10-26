@@ -2,68 +2,49 @@
 # -*- coding: utf-8 -*-
 import os, subprocess, sys
 
-# === 設定値を環境変数から取得（ローカル/CI 両対応） ===
+# === 設定値を環境変数から取得 ===
 NOTION_TOKEN = os.environ.get("NOTION_TOKEN")
 NOTION_DB_ID = os.environ.get("NOTION_DB_ID")
 
-# ローカル既定値（あなたの固定パスはそのまま残す）
-CSV_PATH_LOCAL = "/Users/odaakihisa/Documents/Notion_Auto/automation/data/ChatGPT_Merge_master.csv"
-CDIR_LOCAL     = "/Users/odaakihisa/Documents/Notion_Auto/automation"
+# ▼▼▼ ここだけ修正（CSVはリポ直下の既定に統一） ▼▼▼
+CSV_PATH = os.environ.get("CSV_PATH", "ChatGPT_Merge_master.csv")
+# ▲▲▲ 修正はこの1行のみ ▲▲▲
 
-# CI（GitHub Actions）では自動で作業ディレクトリに切替
-IS_CI = os.environ.get("GITHUB_ACTIONS", "").lower() == "true"
-if IS_CI:
-    # GitHub Actions の作業ディレクトリ（例: /home/runner/work/<repo>/<repo>）
-    CDIR = os.getcwd()
-    # CSV_PATH は Secrets/環境で渡されていなければ、リポ内 data/ を既定に
-    CSV_PATH = os.environ.get("CSV_PATH", os.path.join(CDIR, "data/ChatGPT_Merge_master.csv"))
-else:
-    CDIR = CDIR_LOCAL
-    CSV_PATH = os.environ.get("CSV_PATH", CSV_PATH_LOCAL)
+CDIR = os.getcwd()
 
-# ★追加：LOG_DIR（環境変数または既定logsフォルダ）
-LOG_DIR = os.environ.get("LOG_DIR", os.path.join(CDIR, "logs"))
+# DRY_RUNフラグ：環境変数または手動で制御
+DRY_RUN = os.environ.get("DRY_RUN", "False").lower() in ("1", "true")
 
-# DRY_RUNフラグ：環境変数または手動で制御（既定 False）
-DRY_RUN = os.environ.get("DRY_RUN", "False").lower() in ("1", "true", "yes")
-
-# === 実行関数（そのまま） ===
+# === 以下、自動実行部分 ===
 def run(cmd):
     print(">>>", " ".join(cmd), flush=True)
     subprocess.run(cmd, check=True)
 
 def main():
-    # トークン必須チェック（そのまま）
+    # ローカル実行時は、もし環境変数が空なら警告を出す
     if not NOTION_TOKEN or not NOTION_DB_ID:
         print("⚠️ NOTION_TOKEN または NOTION_DB_ID が設定されていません。")
         print("GitHub Secrets または環境変数を確認してください。")
         sys.exit(1)
 
-    # スクリプトに渡す環境変数をここで統一セット（そのまま）
+    # 参照パス表示（既存の出力フォーマットそのまま）
+    print(f"📂 現在の作業ディレクトリ: {CDIR}")
+    print(f"🗂 参照CSV: {CSV_PATH}")
+    print(f"🗒 ログ出力先: {os.path.join(CDIR, 'logs')}")
+
+    # 環境変数を一時的に渡す
     os.environ["NOTION_TOKEN"] = NOTION_TOKEN
     os.environ["NOTION_DB_ID"] = NOTION_DB_ID
     os.environ["CSV_PATH"] = CSV_PATH
-    os.environ["LOG_DIR"]  = LOG_DIR          # ★追加
     if DRY_RUN:
         os.environ["DRY_RUN"] = "1"
     else:
         os.environ.pop("DRY_RUN", None)
 
-    # 作業ディレクトリへ移動（ローカル/CIで分岐済み）
-    os.chdir(CDIR)
-    print(f"📂 現在の作業ディレクトリ: {CDIR}")
-    print(f"🗂 参照CSV: {os.environ.get('CSV_PATH')}")
-    print(f"🗒 ログ出力先: {LOG_DIR}")
-
-    # ★追加：必要ディレクトリを先に作成（CI用）
-    os.makedirs(os.path.dirname(CSV_PATH), exist_ok=True)
-    os.makedirs(LOG_DIR, exist_ok=True)
-
-    # === [1/2] CSV追記（_save版） ===
+    # スクリプト実行
     print("=== [1/2] AppendCSV_New ===")
     run(["python3", "run_all_append_csv_new_save.py"])
 
-    # === [2/2] Notion反映（_save版） ===
     print("=== [2/2] Notion Upsert ===")
     run(["python3", "notion_upsert_from_csv_save.py"])
 
