@@ -15,12 +15,12 @@ from collections import defaultdict
 from typing import Dict, Tuple, Optional, List, Set
 
 # ====== 固定パス（あなたの環境に合わせて既に使用している値） ======
-# ▼▼▼ ここだけ修正（環境変数優先）。既定は従来のローカル固定パスのまま ▼▼▼
+# ▼▼▼ 修正：環境変数 ROOT_DIR を優先（既定は従来ローカルパス） ▼▼▼
 ROOT_DIR = os.environ.get(
     "ROOT_DIR",
     "/Users/odaakihisa/Library/CloudStorage/GoogleDrive-radioheadsyrup16g@gmail.com/マイドライブ/診断士試験/一次試験/問題・演習/chat gpt作成問題"
 )
-# ▲▲▲ 修正はこの1行のみ ▲▲▲
+# ▲▲▲ 変更はこの1行のみ ▲▲▲
 
 LOG_DIR  = os.environ.get("LOG_DIR", "/Users/odaakihisa/Library/CloudStorage/GoogleDrive-radioheadsyrup16g@gmail.com/マイドライブ/診断士試験/一次試験/_logs")
 CSV_OUT  = os.environ.get("CSV_PATH", "/Users/odaakihisa/Documents/Notion_Auto/automation/data/ChatGPT_Merge_master.csv")
