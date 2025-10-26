@@ -8,39 +8,83 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # ------------------------------
+      # ① ソース取得
+      # ------------------------------
       - name: Checkout
         uses: actions/checkout@v4
 
+      # ------------------------------
+      # ② Pythonセットアップ
+      # ------------------------------
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
+      # ------------------------------
+      # ③ 依存パッケージをインストール
+      # ------------------------------
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install google-api-python-client google-auth google-auth-httplib2 google-auth-oauthlib requests pandas
 
+      # ------------------------------
+      # ④ 必要なフォルダを作成
+      # ------------------------------
       - name: Prepare dirs
         run: |
           mkdir -p data/input logs
 
-      # ▼▼▼ ここをBase64方式に戻す ▼▼▼
-      - name: Materialize Service Account JSON (Base64)
+      # ------------------------------
+      # ⑤ Secret チェック（Base64有効確認）
+      # ------------------------------
+      - name: Preflight: check secret present
         run: |
-          echo "${{ secrets.GDRIVE_SA_JSON_B64 }}" | base64 --decode > sa.json
+          if [ -z "${{ secrets.GDRIVE_SA_JSON_B64 }}" ]; then
+            echo "❌ GDRIVE_SA_JSON_B64 is EMPTY or not visible to this run."
+            echo "Repo Settings → Secrets and variables → Actions → Repository secrets に作成して下さい。"
+            exit 1
+          fi
+
+      # ------------------------------
+      # ⑥ Secret の長さを確認（安全にマスク）
+      # ------------------------------
+      - name: Preflight: print secret length (masked)
+        env:
+          GDRIVE_SA_JSON_B64: ${{ secrets.GDRIVE_SA_JSON_B64 }}
+        run: |
           python - <<'PY'
-          import json,sys,os
-          b=open('sa.json','rb').read()
+          import os
+          s = os.environ.get('GDRIVE_SA_JSON_B64','')
+          print('secret_present:', bool(s))
+          print('secret_length:', len(s))
+          PY
+
+      # ------------------------------
+      # ⑦ Base64 デコードして sa.json を復元
+      # ------------------------------
+      - name: Materialize Service Account JSON (Base64)
+        env:
+          GDRIVE_SA_JSON_B64: ${{ secrets.GDRIVE_SA_JSON_B64 }}
+        run: |
+          echo "$GDRIVE_SA_JSON_B64" | base64 --decode > sa.json
+          python - <<'PY'
+          import json
+          b = open('sa.json','rb').read()
           print('sa.json bytes:', len(b))
           try:
               json.loads(b.decode('utf-8'))
           except Exception as e:
-              print('JSON error:', e); sys.exit(1)
-          print('keys ok')
+              print('JSON error:', e)
+              raise
+          print('✅ sa.json decoded & parsed ok')
           PY
-      # ▲▲▲ ここまで差し替え ▲▲▲
 
+      # ------------------------------
+      # ⑧ パイプラインを実行
+      # ------------------------------
       - name: Run pipeline
         env:
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
