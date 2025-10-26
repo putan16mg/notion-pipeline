@@ -15,9 +15,15 @@ from collections import defaultdict
 from typing import Dict, Tuple, Optional, List, Set
 
 # ====== 固定パス（あなたの環境に合わせて既に使用している値） ======
-ROOT_DIR = "/Users/odaakihisa/Library/CloudStorage/GoogleDrive-radioheadsyrup16g@gmail.com/マイドライブ/診断士試験/一次試験/問題・演習/chat gpt作成問題"
-LOG_DIR  = os.environ.get("LOG_DIR", "/Users/odaakihisa/Library/CloudStorage/GoogleDrive-radioheadsyrup16g@gmail.com/マイドライブ/診断士試験/一次試験/_logs")  # ← 変更①（env優先）
-CSV_OUT  = os.environ.get("CSV_PATH", "/Users/odaakihisa/Documents/Notion_Auto/automation/data/ChatGPT_Merge_master.csv")                                      # ← 変更②（env優先）
+# ▼▼▼ ここだけ修正（環境変数優先）。既定は従来のローカル固定パスのまま ▼▼▼
+ROOT_DIR = os.environ.get(
+    "ROOT_DIR",
+    "/Users/odaakihisa/Library/CloudStorage/GoogleDrive-radioheadsyrup16g@gmail.com/マイドライブ/診断士試験/一次試験/問題・演習/chat gpt作成問題"
+)
+# ▲▲▲ 修正はこの1行のみ ▲▲▲
+
+LOG_DIR  = os.environ.get("LOG_DIR", "/Users/odaakihisa/Library/CloudStorage/GoogleDrive-radioheadsyrup16g@gmail.com/マイドライブ/診断士試験/一次試験/_logs")
+CSV_OUT  = os.environ.get("CSV_PATH", "/Users/odaakihisa/Documents/Notion_Auto/automation/data/ChatGPT_Merge_master.csv")
 BAK_PATH = CSV_OUT + ".bak"
 
 # Drive ルート（あなたが渡したフォルダID）
@@ -28,7 +34,6 @@ SERVICE_ACCOUNT_FILE = os.environ.get(
     "SERVICE_ACCOUNT_FILE",
     "/Users/odaakihisa/Documents/Notion_Auto/automation/notionauto-474307-50e14130c274.json"
 )
-
 
 # ====== 検索ルール ======
 ROLE_BY_FOLDER = {"問題": "problem", "答案解説": "answer"}
@@ -176,7 +181,6 @@ def resolve_drive_url_by_local_path(drive, drive_root_id, local_path, root_dir):
         return ""
     return best.get("webViewLink") or f"https://drive.google.com/open?id={best['id']}&usp=drive_fs"
 
-
 # ===★ ここから追加（改行保証関数）★===
 def ensure_trailing_newline(path: str):
     """既存CSVの末尾に改行が無ければ補う"""
@@ -189,7 +193,6 @@ def ensure_trailing_newline(path: str):
         with open(path, "ab") as f:
             f.write(b"\n")
 # ===★ ここまで追加★===
-
 
 def process_and_output_csv(items, csv_out, log_dir):
     os.makedirs(os.path.dirname(csv_out), exist_ok=True)
