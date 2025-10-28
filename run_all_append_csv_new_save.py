@@ -4,12 +4,6 @@ ChatGPT作成問題のローカル/Driveファイルを走査し、
 (年度, 日付, 科目, Q番号) の4点キーで「問題」と「解答」をペアリング。
 既存CSVを上書きせず、新規データのみ追記（Append）。
 Google Drive のリンクは、サービスアカウント認証で検索して補完（同意画面なし）。
-
-★変更点（最小）：
-- READ_FROM_DRIVE/DRIVE_ROOT_ID フラグ追加（環境変数）
-- Drive配下の .txt をAPIで一時ダウンロードする関数を追加（フラグONの時だけ）
-- SCOPES を read-only に拡張（ダウンロードのため）
-- 既存ロジックはそのまま（collect_and_pair_files → process_and_output_csv）
 """
 
 import os
@@ -29,10 +23,10 @@ LOG_DIR  = os.environ.get("LOG_DIR", "/Users/odaakihisa/Library/CloudStorage/Goo
 CSV_OUT  = os.environ.get("CSV_PATH", "/Users/odaakihisa/Documents/Notion_Auto/automation/data/ChatGPT_Merge_master.csv")
 BAK_PATH = CSV_OUT + ".bak"
 
-# Drive ルート（あなたが渡したフォルダID）
+# Drive ルート
 DRIVE_ROOT_ID = os.environ.get("DRIVE_ROOT_ID", "1XL-9dP0ToNj5MgAMCEPqGH52rUYSciWK")
 
-# サービスアカウントJSON（環境変数優先）
+# サービスアカウントJSON
 SERVICE_ACCOUNT_FILE = os.environ.get(
     "SERVICE_ACCOUNT_FILE",
     "/Users/odaakihisa/Documents/Notion_Auto/automation/notionauto-474307-50e14130c274.json"
@@ -52,13 +46,11 @@ DATE_RE = re.compile(r"(\d{4})_(\d{4})")
 # ====== Drive（サービスアカウント認証。OAuth同意画面なし） ======
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
+import io
+from googleapiclient.http import MediaIoBaseDownload
 
-# ★変更点：ダウンロードを伴うため read-only 権限に拡張
 SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
-
-# ★変更点：Drive直読みのON/OFF（既定はOFF＝ローカル走査）
 READ_FROM_DRIVE = os.environ.get("READ_FROM_DRIVE", "0") == "1"
-# ★変更点：Driveの一時展開先
 DRIVE_CACHE_DIR = os.path.join(os.getcwd(), ".drive_cache")
 
 def build_drive_service():
@@ -93,8 +85,7 @@ def guess_role_by_path(path: str) -> Optional[str]:
     return None
 
 def build_title_from_problem_path(problem_path: str) -> str:
-    base = os.path.splitext(os.path.basename(problem_path))[0]
-    return base
+    return os.path.splitext(os.path.basename(problem_path))[0]
 
 def walk_files(root: str):
     for dirpath, _, filenames in os.walk(root):
@@ -140,12 +131,18 @@ def read_existing_uids(csv_path: str) -> Set[str]:
                 uids.add(uid)
     return uids
 
+
+# === ✅ 修正版 resolve_drive_url_by_local_path ===
 def resolve_drive_url_by_local_path(drive, drive_root_id, local_path, root_dir):
-    """ローカルのベース名でDrive検索 → 親フォルダ名一致スコアで最適1件 → webViewLink"""
+    """Driveファイル検索（×混在対応・部分一致サポート版）"""
     if not local_path:
         return ""
-    base = unicodedata.normalize("NFC", os.path.basename(local_path))  # ←★修正済み★
 
+    base = os.path.basename(local_path)
+    rel = os.path.relpath(local_path, root_dir)
+    local_dirs = [nfc(x) for x in rel.split(os.sep)[:-1]]
+
+    # 完全一致
     res = drive.files().list(
         q=f"name = '{base}' and trashed = false",
         fields="files(id,name,parents,webViewLink)",
@@ -155,11 +152,32 @@ def resolve_drive_url_by_local_path(drive, drive_root_id, local_path, root_dir):
     ).execute()
     files = res.get("files", [])
 
+    # ×／✕／x の混在吸収
+    if not files:
+        alt_base = base.replace("×", "x").replace("✕", "x").replace("＊", "x")
+        res2 = drive.files().list(
+            q=f"name contains '{alt_base}' and trashed = false",
+            fields="files(id,name,parents,webViewLink)",
+            pageSize=50,
+            includeItemsFromAllDrives=True,
+            supportsAllDrives=True,
+        ).execute()
+        files = res2.get("files", [])
+
+    # タイトル部分一致（先頭15文字）
+    if not files:
+        short = os.path.splitext(base)[0][:15]
+        res3 = drive.files().list(
+            q=f"name contains '{short}' and trashed = false",
+            fields="files(id,name,parents,webViewLink)",
+            pageSize=50,
+            includeItemsFromAllDrives=True,
+            supportsAllDrives=True,
+        ).execute()
+        files = res3.get("files", [])
+
     if not files:
         return ""
-
-    rel = os.path.relpath(local_path, root_dir)
-    local_dirs = [nfc(x) for x in rel.split(os.sep)[:-1]]
 
     parent_cache = {}
     def get_first_parent_name(file):
@@ -174,7 +192,7 @@ def resolve_drive_url_by_local_path(drive, drive_root_id, local_path, root_dir):
             fields="id,name,parents",
             supportsAllDrives=True
         ).execute()
-        parent_cache[pid] = meta.get("name","")
+        parent_cache[pid] = meta.get("name", "")
         return parent_cache[pid]
 
     best, best_score = None, -1
@@ -195,9 +213,7 @@ def resolve_drive_url_by_local_path(drive, drive_root_id, local_path, root_dir):
     return best.get("webViewLink") or f"https://drive.google.com/open?id={best['id']}&usp=drive_fs"
 
 
-import io
-from googleapiclient.http import MediaIoBaseDownload
-
+# === 残り：Drive直読み + CSV追記 ===
 def iter_drive_children(drive, folder_id):
     page_token = None
     while True:
@@ -217,7 +233,7 @@ def iter_drive_children(drive, folder_id):
 
 def materialize_drive_txts(drive, root_id, out_root):
     if not root_id:
-        print("⚠ DRIVE_ROOT_ID 未設定（READ_FROM_DRIVE=1なのに）"); return 0
+        print("⚠ DRIVE_ROOT_ID 未設定"); return 0
     os.makedirs(out_root, exist_ok=True)
     created = 0
     queue = [(root_id, "")]
@@ -281,7 +297,7 @@ def process_and_output_csv(items, csv_out, log_dir):
         type1, kind = "問題", "ChatGPT問題"
 
         prob_url = resolve_drive_url_by_local_path(drive, DRIVE_ROOT_ID, prob_path, (DRIVE_CACHE_DIR if READ_FROM_DRIVE else ROOT_DIR))
-        ans_url  = resolve_drive_url_by_local_path(drive, DRIVE_ROOT_ID,  ans_path, (DRIVE_CACHE_DIR if READ_FROM_DRIVE else ROOT_DIR))
+        ans_url  = resolve_drive_url_by_local_path(drive, DRIVE_ROOT_ID, ans_path, (DRIVE_CACHE_DIR if READ_FROM_DRIVE else ROOT_DIR))
 
         new_rows.append([
             year, mmdd, qno, subj, title,
