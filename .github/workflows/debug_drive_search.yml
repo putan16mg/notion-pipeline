@@ -1,0 +1,61 @@
+name: debug-drive-search
+
+on:
+  workflow_dispatch: {}   # 手動実行だけ
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Google API client
+        run: |
+          pip install google-api-python-client google-auth google-auth-httplib2 google-auth-oauthlib
+
+      - name: Materialize Service Account JSON
+        env:
+          SA_B64: ${{ secrets.GDRIVE_SA_JSON_BASE64 }}
+        run: |
+          echo "${SA_B64}" | base64 --decode > sa.json
+
+      - name: Debug Drive search results
+        env:
+          SERVICE_ACCOUNT_FILE: ${{ github.workspace }}/sa.json
+        run: |
+          python - <<'PY'
+          import os, unicodedata
+          from google.oauth2 import service_account
+          from googleapiclient.discovery import build
+
+          creds = service_account.Credentials.from_service_account_file(
+              os.environ["SERVICE_ACCOUNT_FILE"],
+              scopes=["https://www.googleapis.com/auth/drive.readonly"]
+          )
+          drive = build("drive", "v3", credentials=creds, cache_discovery=False)
+
+          # 🔍 ここにテストしたいファイル名を入れる
+          base = "2025_1028_Q01_財務_デュポンシステム×ROE×財務レバレッジ_複合_問題.txt"
+
+          res = drive.files().list(
+              q=f"name contains '{unicodedata.normalize('NFC', base)}' and trashed = false",
+              fields="files(id,name,parents,webViewLink)",
+              includeItemsFromAllDrives=True,
+              supportsAllDrives=True,
+              pageSize=10
+          ).execute()
+
+          files = res.get("files", [])
+          print(f"🔍 検索ヒット数: {len(files)}")
+          for f in files:
+              print("----")
+              print("名前:", f["name"])
+              print("ID:", f["id"])
+              print("Link:", f.get("webViewLink",""))
+          PY
