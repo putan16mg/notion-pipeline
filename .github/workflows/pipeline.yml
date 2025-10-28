@@ -3,6 +3,13 @@ name: notion-pipeline
 on:
   workflow_dispatch: {}
 
+permissions:
+  contents: write   # CSVをリポに書き戻す許可
+
+concurrency:        # 二重起動で同じCSVを同時更新しない
+  group: csv-append
+  cancel-in-progress: false
+
 jobs:
   run:
     runs-on: ubuntu-latest
@@ -11,6 +18,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Sync latest CSV (pull first)
+        run: |
+          git pull --rebase || true
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -26,8 +40,7 @@ jobs:
         run: |
           mkdir -p logs
 
-      # サービスアカウントJSONを Base64 から復元（ヘレドック不使用で安全）
-      - name: Materialize Service Account JSON
+      - name: Materialize Service Account JSON (Base64)
         env:
           SA_B64: ${{ secrets.GDRIVE_SA_JSON_BASE64 }}
         run: |
@@ -38,14 +51,67 @@ jobs:
           echo "${SA_B64}" | base64 --decode > sa.json
           echo "sa.json bytes: $(wc -c < sa.json)"
 
-      - name: Run pipeline
+      - name: Run pipeline (append to ONE CSV only)
         env:
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
           NOTION_DB_ID: ${{ secrets.NOTION_DB_ID }}
-          CSV_PATH: ${{ github.workspace }}/ChatGPT_Merge_master.csv
-          LOG_DIR: ${{ github.workspace }}/logs
+          CSV_PATH: ${{ github.workspace }}/ChatGPT_Merge_master.csv   # ← この1枚だけに追記
+          LOG_DIR:  ${{ github.workspace }}/logs
           SERVICE_ACCOUNT_FILE: ${{ github.workspace }}/sa.json
           READ_FROM_DRIVE: "1"
           DRIVE_ROOT_ID: "1XL-9dP0ToNj5MgAMCEPqGH52rUYSciWK"
+          # もし一時的に“緩め検索”で検証したい場合だけ下を 1 にする（恒常ONは非推奨）
+          # RELAXED_DRIVE_MATCH: "1"
         run: |
           python3 run_pipeline_local_safe.py
+
+      # ▼ デバッグ1：CSV末尾20行を出力（最後の行のURLが空か確認）
+      - name: Debug tail of CSV
+        run: |
+          echo "----- tail CSV -----"
+          tail -n 20 ChatGPT_Merge_master.csv | nl -ba
+          echo "--------------------"
+
+      # ▼ デバッグ2：リンク欠落行を抽出（行番号とキー情報を表示）
+      - name: Debug rows missing links
+        run: |
+          python - <<'PY'
+          import csv, sys
+          from pathlib import Path
+          p = Path("ChatGPT_Merge_master.csv")
+          if not p.exists():
+              print("CSV not found"); sys.exit(0)
+          with p.open(encoding="utf-8-sig") as f:
+              r = csv.DictReader(f)
+              miss = []
+              for i,row in enumerate(r, start=2):  # 1行目はヘッダ
+                  if not row.get("問題") or not row.get("解答解説"):
+                      miss.append((
+                          i,
+                          row.get("年度",""),
+                          row.get("日付",""),
+                          row.get("科目",""),
+                          row.get("Q番号",""),
+                          row.get("問題") or "-",
+                          row.get("解答解説") or "-"
+                      ))
+          if miss:
+              print("=== Missing link rows (line, 年度, 日付, 科目, Q, 問題URL, 解答URL) ===")
+              for m in miss[-10:]:
+                  print(m)
+          else:
+              print("No missing links")
+          PY
+
+      - name: Commit CSV back to repo (no copies)   # CSVのみコミット（複製は作らない）
+        if: ${{ success() }}
+        run: |
+          git add ChatGPT_Merge_master.csv || true
+          if git diff --cached --quiet; then
+            echo "No CSV changes to commit."
+          else
+            git config user.name  "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "Append to ChatGPT_Merge_master.csv [skip ci]"
+            git push
+          fi
