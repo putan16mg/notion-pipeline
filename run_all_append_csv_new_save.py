@@ -144,7 +144,7 @@ def resolve_drive_url_by_local_path(drive, drive_root_id, local_path, root_dir):
     """ローカルのベース名でDrive検索 → 親フォルダ名一致スコアで最適1件 → webViewLink"""
     if not local_path:
         return ""
-    base = os.path.basename(local_path)
+    base = unicodedata.normalize("NFC", os.path.basename(local_path))  # ←★修正済み★
 
     res = drive.files().list(
         q=f"name = '{base}' and trashed = false",
@@ -195,9 +195,8 @@ def resolve_drive_url_by_local_path(drive, drive_root_id, local_path, root_dir):
     return best.get("webViewLink") or f"https://drive.google.com/open?id={best['id']}&usp=drive_fs"
 
 
-# ===★ 追加：Drive直読み用（フラグON時のみ使用）★===
-import io  # ★変更点
-from googleapiclient.http import MediaIoBaseDownload  # ★変更点
+import io
+from googleapiclient.http import MediaIoBaseDownload
 
 def iter_drive_children(drive, folder_id):
     page_token = None
@@ -217,7 +216,6 @@ def iter_drive_children(drive, folder_id):
             break
 
 def materialize_drive_txts(drive, root_id, out_root):
-    """DriveのfolderId配下を再帰探索して .txt を out_root に保存"""
     if not root_id:
         print("⚠ DRIVE_ROOT_ID 未設定（READ_FROM_DRIVE=1なのに）"); return 0
     os.makedirs(out_root, exist_ok=True)
@@ -243,12 +241,8 @@ def materialize_drive_txts(drive, root_id, out_root):
                     _, done = downloader.next_chunk()
             created += 1
     return created
-# ===★ ここまで追加★===
 
-
-# ===★ ここから既存（CSV改行保証）★===
 def ensure_trailing_newline(path: str):
-    """既存CSVの末尾に改行が無ければ補う"""
     if not os.path.exists(path) or os.path.getsize(path) == 0:
         return
     with open(path, "rb") as f:
@@ -257,7 +251,6 @@ def ensure_trailing_newline(path: str):
     if last not in (b"\n", b"\r"):
         with open(path, "ab") as f:
             f.write(b"\n")
-# ===★ ここまで既存★===
 
 def process_and_output_csv(items, csv_out, log_dir):
     os.makedirs(os.path.dirname(csv_out), exist_ok=True)
@@ -280,14 +273,13 @@ def process_and_output_csv(items, csv_out, log_dir):
     for (year, mmdd, subj, qno), rec in sorted(items.items()):
         uid = make_uid(year, mmdd, subj, qno)
         if uid in existing_uids:
-            continue  # 追記のみ
+            continue
 
         prob_path = rec.get("problem", "")
         ans_path  = rec.get("answer",  "")
         title = build_title_from_problem_path(prob_path) if prob_path else ""
         type1, kind = "問題", "ChatGPT問題"
 
-        # Drive検索でリンク補完
         prob_url = resolve_drive_url_by_local_path(drive, DRIVE_ROOT_ID, prob_path, (DRIVE_CACHE_DIR if READ_FROM_DRIVE else ROOT_DIR))
         ans_url  = resolve_drive_url_by_local_path(drive, DRIVE_ROOT_ID,  ans_path, (DRIVE_CACHE_DIR if READ_FROM_DRIVE else ROOT_DIR))
 
@@ -315,7 +307,6 @@ def process_and_output_csv(items, csv_out, log_dir):
     print("▶ END")
 
 def main():
-    # ★追加：Drive直読みがONなら .txt を一時取得してから既存ロジックで走査
     if READ_FROM_DRIVE:
         drive = build_drive_service()
         print("▶ DriveからTXTを取得（キャッシュ展開）...")
