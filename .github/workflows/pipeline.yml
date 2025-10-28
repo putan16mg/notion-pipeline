@@ -60,8 +60,7 @@ jobs:
           SERVICE_ACCOUNT_FILE: ${{ github.workspace }}/sa.json
           READ_FROM_DRIVE: "1"
           DRIVE_ROOT_ID: "1XL-9dP0ToNj5MgAMCEPqGH52rUYSciWK"
-          # もし一時的に“緩め検索”で検証したい場合だけ下を 1 にする（恒常ONは非推奨）
-          # RELAXED_DRIVE_MATCH: "1"
+          RELAXED_DRIVE_MATCH: "1"   # ← 🔹追加：Drive検索の一致条件を緩和（末尾行リンク抜け防止）
         run: |
           python3 run_pipeline_local_safe.py
 
@@ -109,7 +108,7 @@ jobs:
           git add ChatGPT_Merge_master.csv || true
           if git diff --cached --quiet; then
             echo "No CSV changes to commit."
-          else
+          else:
             git config user.name  "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "Append to ChatGPT_Merge_master.csv [skip ci]"
