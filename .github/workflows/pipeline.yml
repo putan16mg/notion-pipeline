@@ -18,8 +18,8 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install google-api-python-client google-auth google-auth-httplib2 google-auth-oauthlib requests pandas
+          python -m pip install --upgrade pip setuptools wheel
+          pip install packaging google-api-python-client google-auth google-auth-httplib2 google-auth-oauthlib requests pandas
 
       - name: Prepare dirs
         run: |
@@ -39,7 +39,7 @@ jobs:
           CSV_PATH: ${{ github.workspace }}/ChatGPT_Merge_master.csv
           LOG_DIR:  ${{ github.workspace }}/logs
           SERVICE_ACCOUNT_FILE: ${{ github.workspace }}/sa.json
-          USE_DRIVE_SOURCE: "1"                                # ← Driveから直接読み込み
-          DRIVE_ROOT_ID: "1XL-9dP0ToNj5MgAMCEPqGH52rUYSciWK"   # ← あなたのDriveルートID
+          USE_DRIVE_SOURCE: "1"
+          DRIVE_ROOT_ID: "1XL-9dP0ToNj5MgAMCEPqGH52rUYSciWK"
         run: |
           python3 run_pipeline_local_safe.py
