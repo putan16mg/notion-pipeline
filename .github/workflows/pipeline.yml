@@ -60,18 +60,16 @@ jobs:
           SERVICE_ACCOUNT_FILE: ${{ github.workspace }}/sa.json
           READ_FROM_DRIVE: "1"
           DRIVE_ROOT_ID: "1XL-9dP0ToNj5MgAMCEPqGH52rUYSciWK"
-          RELAXED_DRIVE_MATCH: "1"   # ← 🔹追加：Drive検索の一致条件を緩和（末尾行リンク抜け防止）
+          RELAXED_DRIVE_MATCH: "1"
         run: |
           python3 run_pipeline_local_safe.py
 
-      # ▼ デバッグ1：CSV末尾20行を出力（最後の行のURLが空か確認）
       - name: Debug tail of CSV
         run: |
           echo "----- tail CSV -----"
           tail -n 20 ChatGPT_Merge_master.csv | nl -ba
           echo "--------------------"
 
-      # ▼ デバッグ2：リンク欠落行を抽出（行番号とキー情報を表示）
       - name: Debug rows missing links
         run: |
           python - <<'PY'
@@ -83,7 +81,7 @@ jobs:
           with p.open(encoding="utf-8-sig") as f:
               r = csv.DictReader(f)
               miss = []
-              for i,row in enumerate(r, start=2):  # 1行目はヘッダ
+              for i,row in enumerate(r, start=2):
                   if not row.get("問題") or not row.get("解答解説"):
                       miss.append((
                           i,
@@ -102,13 +100,13 @@ jobs:
               print("No missing links")
           PY
 
-      - name: Commit CSV back to repo (no copies)   # CSVのみコミット（複製は作らない）
+      - name: Commit CSV back to repo (no copies)
         if: ${{ success() }}
         run: |
           git add ChatGPT_Merge_master.csv || true
           if git diff --cached --quiet; then
             echo "No CSV changes to commit."
-          else:
+          else
             git config user.name  "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "Append to ChatGPT_Merge_master.csv [skip ci]"
