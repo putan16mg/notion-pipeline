@@ -26,16 +26,16 @@ jobs:
         run: |
           mkdir -p logs
 
+      # サービスアカウントJSONを Base64 から復元（ヘレドック不使用で安全）
       - name: Materialize Service Account JSON
-        shell: bash
+        env:
+          SA_B64: ${{ secrets.GDRIVE_SA_JSON_BASE64 }}
         run: |
-          if [ -n "${{ secrets.GDRIVE_SA_JSON_BASE64 }}" ]; then
-            echo "${{ secrets.GDRIVE_SA_JSON_BASE64 }}" | base64 --decode > sa.json
-          else
-            cat > sa.json <<'JSON'
-${{ secrets.GDRIVE_SA_JSON }}
-JSON
+          if [ -z "${SA_B64}" ]; then
+            echo "Secret GDRIVE_SA_JSON_BASE64 is empty" >&2
+            exit 1
           fi
+          echo "${SA_B64}" | base64 --decode > sa.json
           echo "sa.json bytes: $(wc -c < sa.json)"
 
       - name: Run pipeline
@@ -43,7 +43,7 @@ JSON
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
           NOTION_DB_ID: ${{ secrets.NOTION_DB_ID }}
           CSV_PATH: ${{ github.workspace }}/ChatGPT_Merge_master.csv
-          LOG_DIR:  ${{ github.workspace }}/logs
+          LOG_DIR: ${{ github.workspace }}/logs
           SERVICE_ACCOUNT_FILE: ${{ github.workspace }}/sa.json
           READ_FROM_DRIVE: "1"
           DRIVE_ROOT_ID: "1XL-9dP0ToNj5MgAMCEPqGH52rUYSciWK"
