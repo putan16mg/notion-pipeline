@@ -1,11 +1,14 @@
 name: notion-pipeline
 
 on:
-  workflow_dispatch:
+  workflow_dispatch: {}   # 手動起動（iPadショートカットから叩ける）
+  # schedule:
+  #   - cron: '30 13 * * *'   # 例: 毎日22:30 JST（UTCで13:30）
 
 jobs:
   run:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
@@ -18,28 +21,47 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip setuptools wheel
-          pip install packaging google-api-python-client google-auth google-auth-httplib2 google-auth-oauthlib requests pandas
+          python -m pip install --upgrade pip
+          # ★ 依存を明示（packaging を追加）
+          pip install google-api-python-client google-auth google-auth-httplib2 google-auth-oauthlib requests pandas packaging
 
       - name: Prepare dirs
         run: |
-          mkdir -p data/input logs
+          mkdir -p logs
 
-      # ▼ サービスアカウント JSON（Base64）を復元
+      # ★ サービスアカウントJSONをファイル化（Base64 と プレーン の両対応）
       - name: Materialize Service Account JSON
-        run: |
-          echo "${{ secrets.GDRIVE_SA_JSON_BASE64 }}" | base64 --decode > sa.json
         shell: bash
+        run: |
+          if [ -n "${{ secrets.GDRIVE_SA_JSON_BASE64 }}" ]; then
+            echo "${{ secrets.GDRIVE_SA_JSON_BASE64 }}" | base64 --decode > sa.json
+          else
+            # プレーンJSON想定（ダブルクォート等はSecretsにそのまま貼り付け）
+            cat > sa.json <<'JSON'
+${{ secrets.GDRIVE_SA_JSON }}
+JSON
+          fi
+          echo "sa.json bytes: $(wc -c < sa.json)"
 
-      # ▼ メイン処理
       - name: Run pipeline
         env:
+          # ★ Notion / DB
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
           NOTION_DB_ID: ${{ secrets.NOTION_DB_ID }}
+
+          # ★ 出力CSV（リポ直下に作成）
           CSV_PATH: ${{ github.workspace }}/ChatGPT_Merge_master.csv
+
+          # ★ ログ出力先（/Users を使わない）
           LOG_DIR:  ${{ github.workspace }}/logs
+
+          # ★ Drive 直読みのための鍵ファイル
           SERVICE_ACCOUNT_FILE: ${{ github.workspace }}/sa.json
-          USE_DRIVE_SOURCE: "1"
+
+          # ★ ここが今回のキモ：Driveから直接.txtを取得するモードをON
+          READ_FROM_DRIVE: "1"
+
+          # ★ Driveの起点フォルダID（あなたのIDを設定）
           DRIVE_ROOT_ID: "1XL-9dP0ToNj5MgAMCEPqGH52rUYSciWK"
         run: |
           python3 run_pipeline_local_safe.py
