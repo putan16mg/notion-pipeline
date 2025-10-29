@@ -10,6 +10,11 @@ Google Drive のリンクは、サービスアカウント認証で検索して�
 - Drive配下の .txt をAPIで一時ダウンロードする関数を追加（フラグONの時だけ）
 - SCOPES を read-only に拡張（ダウンロードのため）
 - 既存ロジックはそのまま（collect_and_pair_files → process_and_output_csv）
+
+★今回の追加修正（最小）：
+- resolve_drive_url_by_local_path() の末尾で
+  「best が取れなかった時に files[0] をフォールバック使用」
+  「返すURLを NFC 正規化して返却」
 """
 
 import os
@@ -53,12 +58,12 @@ DATE_RE = re.compile(r"(\d{4})_(\d{4})")
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
-# ★変更点：ダウンロードを伴うため read-only 権限に拡張
+# read-only 権限
 SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
 
-# ★変更点：Drive直読みのON/OFF（既定はOFF＝ローカル走査）
+# Drive直読みのON/OFF（既定はOFF＝ローカル走査）
 READ_FROM_DRIVE = os.environ.get("READ_FROM_DRIVE", "0") == "1"
-# ★変更点：Driveの一時展開先
+# Driveの一時展開先
 DRIVE_CACHE_DIR = os.path.join(os.getcwd(), ".drive_cache")
 
 def build_drive_service():
@@ -140,15 +145,15 @@ def read_existing_uids(csv_path: str) -> Set[str]:
                 uids.add(uid)
     return uids
 
-# ====== ★ここだけ最小修正（それ以外は一切変更なし） ======
+# ====== ★ここだけ今回の最小修正を含む関数 ======
 def resolve_drive_url_by_local_path(drive, drive_root_id, local_path, root_dir):
     """ローカルのベース名でDrive検索 → 親フォルダ名一致スコアで最適1件 → webViewLink"""
     if not local_path:
         return ""
-    # ★ 追加：NFC 正規化（macとubuntuの文字コード差を吸収）
+    # NFC 正規化（macとubuntuの文字コード差を吸収）
     base = nfc(os.path.basename(local_path))
 
-    # ★ 修正点1：完全一致から部分一致に変更（name = → name contains）
+    # 完全一致から部分一致へ（name contains）
     res = drive.files().list(
         q=f"name contains '{base}' and trashed = false",
         fields="files(id,name,parents,webViewLink)",
@@ -193,15 +198,19 @@ def resolve_drive_url_by_local_path(drive, drive_root_id, local_path, root_dir):
         if score > best_score:
             best, best_score = f, score
 
+    # ★フォールバック：bestが取れない場合は先頭候補を使う
     if not best:
-        return ""
-    # ★ 修正点2：URL取得の冗長化（保険）
-    return best.get("webViewLink") or f"https://drive.google.com/open?id={best['id']}&usp=drive_fs"
-# ====== ★最小修正ここまで ======
+        first = files[0]
+        link = first.get("webViewLink") or f"https://drive.google.com/open?id={first['id']}&usp=drive_fs"
+        return nfc(link)
+
+    # 返すURLもNFCで正規化
+    link = best.get("webViewLink") or f"https://drive.google.com/open?id={best['id']}&usp=drive_fs"
+    return nfc(link)
 
 # ===★ 追加：Drive直読み用（フラグON時のみ使用）★===
-import io  # ★変更点
-from googleapiclient.http import MediaIoBaseDownload  # ★変更点
+import io
+from googleapiclient.http import MediaIoBaseDownload
 
 def iter_drive_children(drive, folder_id):
     page_token = None
@@ -247,8 +256,6 @@ def materialize_drive_txts(drive, root_id, out_root):
                     _, done = downloader.next_chunk()
             created += 1
     return created
-# ===★ ここまで追加★===
-
 
 # ===★ ここから既存（CSV改行保証）★===
 def ensure_trailing_newline(path: str):
@@ -261,7 +268,6 @@ def ensure_trailing_newline(path: str):
     if last not in (b"\n", b"\r"):
         with open(path, "ab") as f:
             f.write(b"\n")
-# ===★ ここまで既存★===
 
 def process_and_output_csv(items, csv_out, log_dir):
     os.makedirs(os.path.dirname(csv_out), exist_ok=True)
@@ -292,8 +298,9 @@ def process_and_output_csv(items, csv_out, log_dir):
         type1, kind = "問題", "ChatGPT問題"
 
         # Drive検索でリンク補完
-        prob_url = resolve_drive_url_by_local_path(drive, DRIVE_ROOT_ID, prob_path, (DRIVE_CACHE_DIR if READ_FROM_DRIVE else ROOT_DIR))
-        ans_url  = resolve_drive_url_by_local_path(drive, DRIVE_ROOT_ID,  ans_path, (DRIVE_CACHE_DIR if READ_FROM_DRIVE else ROOT_DIR))
+        base_root = (DRIVE_CACHE_DIR if READ_FROM_DRIVE else ROOT_DIR)
+        prob_url = resolve_drive_url_by_local_path(drive, DRIVE_ROOT_ID, prob_path, base_root)
+        ans_url  = resolve_drive_url_by_local_path(drive, DRIVE_ROOT_ID,  ans_path,  base_root)
 
         new_rows.append([
             year, mmdd, qno, subj, title,
@@ -319,7 +326,7 @@ def process_and_output_csv(items, csv_out, log_dir):
     print("▶ END")
 
 def main():
-    # ★追加：Drive直読みがONなら .txt を一時取得してから既存ロジックで走査
+    # Drive直読みがONなら .txt を一時取得してから既存ロジックで走査
     if READ_FROM_DRIVE:
         drive = build_drive_service()
         print("▶ DriveからTXTを取得（キャッシュ展開）...")
