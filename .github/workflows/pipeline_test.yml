@@ -1,0 +1,96 @@
+name: notion-pipeline-test
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read   # ← リポ書き込み禁止（安全）
+
+concurrency:
+  group: csv-append-test
+  cancel-in-progress: false
+
+jobs:
+  dry-run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout (read-only)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies (same as prod)
+        run: |
+          python -m pip install --upgrade pip
+          pip install google-api-python-client google-auth google-auth-httplib2 google-auth-oauthlib requests pandas packaging
+
+      - name: Materialize Service Account JSON (Base64)
+        env:
+          SA_B64: ${{ secrets.GDRIVE_SA_JSON_BASE64 }}
+        run: |
+          if [ -z "${SA_B64}" ]; then
+            echo "Secret GDRIVE_SA_JSON_BASE64 is empty" >&2
+            exit 1
+          fi
+          echo "${SA_B64}" | base64 --decode > sa.json
+          echo "sa.json bytes: $(wc -c < sa.json)"
+
+      # === 既存スクリプト名をそのまま利用 ===
+      # ・AppendCSVのみ実行するため run_all_append_csv_new_save.py を直呼び
+      # ・CSVはテスト用ファイルに出力（本番CSVは触らない）
+      - name: AppendCSV_New (TEST to local workspace CSV)
+        env:
+          CSV_PATH: ${{ github.workspace }}/ChatGPT_Merge_master_TEST.csv
+          LOG_DIR:  ${{ github.workspace }}/logs
+          SERVICE_ACCOUNT_FILE: ${{ github.workspace }}/sa.json
+          READ_FROM_DRIVE: "1"
+          DRIVE_ROOT_ID: "1XL-9dP0ToNj5MgAMCEPqGH52rUYSciWK"
+          RELAXED_DRIVE_MATCH: "1"
+        run: |
+          mkdir -p "$LOG_DIR"
+          python3 run_all_append_csv_new_save.py
+
+      # 既存のデバッグ出力を流用（ファイル名だけTEST版に変更）
+      - name: Debug tail of CSV (TEST)
+        run: |
+          echo "----- tail CSV (TEST) -----"
+          tail -n 20 ChatGPT_Merge_master_TEST.csv | nl -ba || true
+          echo "---------------------------"
+
+      - name: Debug rows missing links (TEST)
+        run: |
+          python - <<'PY'
+          import csv, sys
+          from pathlib import Path
+          p = Path("ChatGPT_Merge_master_TEST.csv")
+          if not p.exists():
+              print("CSV not found"); sys.exit(0)
+          with p.open(encoding="utf-8-sig") as f:
+              r = csv.DictReader(f)
+              miss = []
+              for i,row in enumerate(r, start=2):
+                  if not row.get("問題") or not row.get("解答解説"):
+                      miss.append((
+                          i,
+                          row.get("年度",""),
+                          row.get("日付",""),
+                          row.get("科目",""),
+                          row.get("Q番号",""),
+                          row.get("問題") or "-",
+                          row.get("解答解説") or "-"
+                      ))
+          if miss:
+              print("=== Missing link rows (line, 年度, 日付, 科目, Q, 問題URL, 解答URL) ===")
+              for m in miss[-10:]:
+                  print(m)
+          else:
+              print("No missing links (TEST)")
+          PY
