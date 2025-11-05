@@ -1,33 +1,33 @@
-name: notion-pipeline-test
+name: notion-pipeline
 
 on:
   workflow_dispatch: {}
 
 permissions:
-  contents: read   # ← リポ書き込み禁止（安全）
+  contents: write   # 本番: CSVを書き戻す
 
 concurrency:
-  group: csv-append-test
+  group: csv-append
   cancel-in-progress: false
 
 jobs:
-  dry-run:
+  run:
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
     steps:
-      - name: Checkout (read-only)
+      - name: Checkout (with credentials)
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          persist-credentials: false
+          persist-credentials: true
 
       - name: Setup Python 3.10
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
-      - name: Install dependencies (same as prod)
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install google-api-python-client google-auth google-auth-httplib2 google-auth-oauthlib requests pandas packaging
@@ -43,12 +43,12 @@ jobs:
           echo "${SA_B64}" | base64 --decode > sa.json
           echo "sa.json bytes: $(wc -c < sa.json)"
 
-      # === 既存スクリプト名をそのまま利用 ===
-      # ・AppendCSVのみ実行するため run_all_append_csv_new_save.py を直呼び
-      # ・CSVはテスト用ファイルに出力（本番CSVは触らない）
-      - name: AppendCSV_New (TEST to local workspace CSV)
+      # === AppendCSVのみ実行（既存スクリプト名はそのまま） ===
+      - name: AppendCSV_New (PROD to main CSV)
         env:
-          CSV_PATH: ${{ github.workspace }}/ChatGPT_Merge_master_TEST.csv
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}         # （スクリプトが参照する可能性に備えて同梱）
+          NOTION_DB_ID: ${{ secrets.NOTION_DB_ID }}
+          CSV_PATH: ${{ github.workspace }}/ChatGPT_Merge_master.csv
           LOG_DIR:  ${{ github.workspace }}/logs
           SERVICE_ACCOUNT_FILE: ${{ github.workspace }}/sa.json
           READ_FROM_DRIVE: "1"
@@ -58,39 +58,53 @@ jobs:
           mkdir -p "$LOG_DIR"
           python3 run_all_append_csv_new_save.py
 
-      # 既存のデバッグ出力を流用（ファイル名だけTEST版に変更）
-      - name: Debug tail of CSV (TEST)
+      # === デバッグ（本番CSVを対象） ===
+      - name: Debug tail of CSV
         run: |
-          echo "----- tail CSV (TEST) -----"
-          tail -n 20 ChatGPT_Merge_master_TEST.csv | nl -ba || true
-          echo "---------------------------"
+          echo "----- tail CSV -----"
+          tail -n 20 ChatGPT_Merge_master.csv | nl -ba || true
+          echo "--------------------"
 
-      - name: Debug rows missing links (TEST)
+      - name: Debug rows missing links
         run: |
           python - <<'PY'
           import csv, sys
           from pathlib import Path
-          p = Path("ChatGPT_Merge_master_TEST.csv")
+          p = Path("ChatGPT_Merge_master.csv")
           if not p.exists():
               print("CSV not found"); sys.exit(0)
           with p.open(encoding="utf-8-sig") as f:
-              r = csv.DictReader(f)
-              miss = []
-              for i,row in enumerate(r, start=2):
-                  if not row.get("問題") or not row.get("解答解説"):
-                      miss.append((
-                          i,
-                          row.get("年度",""),
-                          row.get("日付",""),
-                          row.get("科目",""),
-                          row.get("Q番号",""),
-                          row.get("問題") or "-",
-                          row.get("解答解説") or "-"
-                      ))
+            r = csv.DictReader(f)
+            miss = []
+            for i,row in enumerate(r, start=2):
+              if not row.get("問題") or not row.get("解答解説"):
+                miss.append((
+                  i,
+                  row.get("年度",""),
+                  row.get("日付",""),
+                  row.get("科目",""),
+                  row.get("Q番号",""),
+                  row.get("問題") or "-",
+                  row.get("解答解説") or "-"
+                ))
           if miss:
-              print("=== Missing link rows (line, 年度, 日付, 科目, Q, 問題URL, 解答URL) ===")
-              for m in miss[-10:]:
-                  print(m)
+            print("=== Missing link rows (line, 年度, 日付, 科目, Q, 問題URL, 解答URL) ===")
+            for m in miss[-10:]:
+              print(m)
           else:
-              print("No missing links (TEST)")
+            print("No missing links")
           PY
+
+      # === CSVだけコミット（他は触らない） ===
+      - name: Commit CSV back to repo
+        if: ${{ success() }}
+        run: |
+          git add ChatGPT_Merge_master.csv || true
+          if git diff --cached --quiet; then
+            echo "No CSV changes to commit."
+          else
+            git config user.name  "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "Append to ChatGPT_Merge_master.csv [skip ci]"
+            git push
+          fi
