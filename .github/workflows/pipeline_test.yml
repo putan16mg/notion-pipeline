@@ -1,4 +1,4 @@
-name: notion-pipeline-merged
+name: notion-pipeline
 
 on:
   workflow_dispatch: {}
