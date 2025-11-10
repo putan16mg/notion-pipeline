@@ -1,4 +1,4 @@
-name: notion-pipeline
+name: notion-pipeline-merged
 
 on:
   workflow_dispatch: {}
@@ -54,9 +54,35 @@ jobs:
           READ_FROM_DRIVE: "1"
           DRIVE_ROOT_ID: "1XL-9dP0ToNj5MgAMCEPqGH52rUYSciWK"
           RELAXED_DRIVE_MATCH: "1"
+          NOTION_PUSH: "1"                 # ← フラグ方式の実装なら有効（無視されてもOK）
         run: |
           mkdir -p "$LOG_DIR"
           python3 run_all_append_csv_new_save.py
+
+      # --- 追加①: Notion SDKが必要な実装向け（requests直叩きなら不要）。失敗しても継続 ---
+      - name: (Optional) Install Notion SDK
+        run: |
+          pip install notion-client
+        continue-on-error: true
+
+      # --- 追加②: Notion 反映 本体（CSVからNotionへ）。実装に応じて存在チェックで実行 ---
+      - name: Upsert to Notion (from CSV)
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_DB_ID: ${{ secrets.NOTION_DB_ID }}
+          CSV_PATH: ${{ github.workspace }}/ChatGPT_Merge_master.csv
+          LOG_DIR:  ${{ github.workspace }}/logs
+        run: |
+          set -e
+          if [ -f "run_notion_upsert.py" ]; then
+            echo "Running: python3 run_notion_upsert.py"
+            python3 run_notion_upsert.py
+          elif [ -f "tools/run_notion_upsert.py" ]; then
+            echo "Running: python3 tools/run_notion_upsert.py"
+            python3 tools/run_notion_upsert.py
+          else
+            echo "[INFO] Notion upsert script not found. If your Notion sync is inside run_all_append_csv_new_save.py, this is expected."
+          fi
 
       # === デバッグ（本番CSVを対象） ===
       - name: Debug tail of CSV
